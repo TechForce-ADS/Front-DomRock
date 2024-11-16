@@ -24,15 +24,7 @@
       </button>
     </div>
 
-    <div class="bloco">
-      <input
-        v-model="userQuery"
-        @keyup.enter="sendMessage"
-        placeholder="Digite sua pergunta..."
-        class="pergunta"
-      />
-      <button @click="sendMessage" class="btn-enviar"></button>
-    </div>
+   
     
     <div class="chat">
       <div
@@ -49,6 +41,15 @@
       <!-- Exibe "..." enquanto a resposta está sendo gerada -->
       <div v-if="loading" class="loading-indicator liv-message mensagem">...</div>
 
+    </div>
+    <div class="bloco">
+      <input
+        v-model="userQuery"
+        @keyup.enter="sendMessage"
+        placeholder="Digite sua pergunta..."
+        class="pergunta"
+      />
+      <button @click="sendMessage" class="btn-enviar"></button>
     </div>
   </div>
 </template>
