@@ -37,10 +37,18 @@
         }"
       >
         <strong>{{ msg.role }}:</strong> {{ msg.message }}
+        <!-- Botão de copiar -->
+        <button
+          v-if="msg.role === 'Liv'"
+          class="copy-btn"
+          @click="copyToClipboard(msg)"
+          title="Copiar"
+        >
+          <i :class="msg.iconState"></i>
+        </button>
       </div>
       <!-- Exibe "..." enquanto a resposta está sendo gerada -->
       <div v-if="loading" class="loading-indicator liv-message mensagem">...</div>
-
     </div>
     <div class="bloco">
       <input
@@ -55,48 +63,63 @@
 </template>
 
 <script>
-import axios from "axios";
+  import axios from "axios";
 
-export default {
-  data() {
-    return {
-      userQuery: "",
-      messages: [],
-      loading: false, // Controle de carregamento
-    };
-  },
-  methods: {
-    async sendMessage() {
-      if (this.userQuery.trim() === "") return;
-
-      // Adiciona a mensagem do usuário
-      this.messages.push({ role: "User", message: this.userQuery });
-      this.loading = true; // Ativa o indicador de carregamento
-
-      try {
-        const response = await axios.post("http://127.0.0.1:5000/ask", {
-          query: this.userQuery,
-        });
-
-        // Adiciona a resposta do chatbot
-        this.messages.push({
-          role: "Liv",
-          message: response.data.response,
-        });
-      } catch (error) {
-        console.error("Erro ao se comunicar com o servidor:", error);
-      } finally {
-        this.loading = false; // Desativa o indicador de carregamento
-      }
-
-      // Limpa o campo de input
-      this.userQuery = "";
+  export default {
+    data() {
+      return {
+        userQuery: "",
+        messages: [],
+        loading: false, // Controle de carregamento
+      };
     },
-    setUserQuery(query) {
-      this.userQuery = query; // Define a consulta do usuário
+    methods: {
+      async sendMessage() {
+        if (this.userQuery.trim() === "") return;
+
+        // Adiciona a mensagem do usuário
+        this.messages.push({ role: "User", message: this.userQuery });
+        this.loading = true; // Ativa o indicador de carregamento
+
+        try {
+          const response = await axios.post("http://127.0.0.1:5000/ask", {
+            query: this.userQuery,
+          });
+
+          // Adiciona a resposta do chatbot com o estado inicial do ícone
+          this.messages.push({
+            role: "Liv",
+            message: response.data.response,
+            iconState: "icon-copy", // Estado inicial do ícone de cópia
+          });
+        } catch (error) {
+          console.error("Erro ao se comunicar com o servidor:", error);
+        } finally {
+          this.loading = false; // Desativa o indicador de carregamento
+        }
+
+        // Limpa o campo de input
+        this.userQuery = "";
+      },
+
+      setUserQuery(query) {
+        this.userQuery = query; // Define a consulta do usuário
+      },
+
+      copyToClipboard(msg) {
+        msg.iconState = "icon-check"; // Altera o ícone apenas para a mensagem clicada
+        navigator.clipboard.writeText(msg.message)
+          .then(() => {
+            setTimeout(() => {
+              msg.iconState = "icon-copy"; // Reverte o ícone após 1 segundo
+            }, 2000);
+          })
+          .catch(err => {
+            console.error("Erro ao copiar texto:", err);
+          });
+      },
     },
-  },
-};
+  };
 </script>
 
 <style scoped>
@@ -270,4 +293,33 @@ h5{
   60% { content: "..."; }
   80%, 100% { content: ""; }
 }
+
+.copy-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-top: 12px;
+
+}
+
+.copy-btn:hover {
+  transform: scale(1.1);
+}
+
+.icon-copy {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  background: url("@/assets/copiar.png") no-repeat center;
+  background-size: contain;
+}
+
+.icon-check {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  background: url("@/assets/copiado.png") no-repeat center;
+  background-size: contain;
+}
+
 </style>
