@@ -1,7 +1,11 @@
 <template>
   <div id="app">
     <transition name="fade-slide">
-      <Home v-if="!chatStarted" @start-chat="chatStarted = true" />
+      <!-- Exibe a tela de LoginChat primeiro -->
+      <LoginChat v-if="!isLoggedIn" @login-success="handleLoginSuccess" />
+      <!-- Exibe a tela inicial após o login -->
+      <Home v-else-if="!chatStarted" @start-chat="chatStarted = true" />
+      <!-- Exibe o chatbot quando o chat começa -->
       <ChatBot v-else />
     </transition>
   </div>
@@ -10,16 +14,25 @@
 <script>
 import Home from "./components/HomeChat.vue";
 import ChatBot from "./components/ChatBot.vue";
+import LoginChat from "./components/LoginChat.vue";
 
 export default {
   components: {
     Home,
     ChatBot,
+    LoginChat,
   },
   data() {
     return {
-      chatStarted: false,
+      chatStarted: false, // Controla se o chat foi iniciado
+      isLoggedIn: false,  // Controla se o usuário está logado
     };
+  },
+  methods: {
+    handleLoginSuccess() {
+      // Marca o login como concluído
+      this.isLoggedIn = true;
+    },
   },
 };
 </script>
@@ -33,17 +46,14 @@ export default {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  
 }
 
 /* Transição de fade com slide */
 .fade-slide-enter-active, .fade-slide-leave-active {
- 
-  transition:  all 1s ease-in-out;
+  transition: all 1s ease-in-out;
 }
 
 .fade-slide-enter, .fade-slide-leave-to {
-
-  transform: translateY(100%); 
+  transform: translateY(100%);
 }
 </style>
