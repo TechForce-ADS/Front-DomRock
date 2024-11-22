@@ -37,23 +37,45 @@
     <div class="chat">
       <div
         class="mensagem"
-        v-for="msg in messages"
-        :key="msg.id"
+        v-for="(msg, index) in messages"
+        :key="index"
         :class="{
           'liv-message': msg.role === 'Liv',
           'user-message': msg.role === 'User',
         }"
       >
-        <strong>{{ msg.role }}:</strong> {{ msg.message }}
-        <!-- Botão de copiar -->
-        <button
-          v-if="msg.role === 'Liv'"
-          class="copy-btn"
-          @click="copyToClipboard(msg)"
-          title="Copiar"
-        >
-          <i :class="msg.iconState"></i>
-        </button>
+        <strong>{{ msg.role }}:</strong>
+        <template v-if="editingIndex === index">
+          <!-- Campo de edição -->
+          <textarea 
+            v-model="editQuery" 
+            class="edit-textarea">
+          </textarea>
+          <div class="edit-buttons">
+            <button @click="saveEdit(index)" class="btn-edit-save">Salvar</button>
+            <button @click="cancelEdit" class="btn-edit-cancel">Cancelar</button>
+          </div>
+        </template>
+        <template v-else>
+          <!-- Exibe mensagem -->
+          {{ msg.message }}
+          <!-- Botão de editar -->
+          <button
+            v-if="msg.role === 'User'"
+            class="icon-edit"
+            title="Editar mensagem"
+            @click="startEdit(index, msg.message)"
+          ></button>
+          <!-- Botão de copiar -->
+          <button
+            v-if="msg.role === 'Liv'"
+            class="copy-btn"
+            @click="copyToClipboard(msg)"
+            title="Copiar"
+          >
+            <i :class="msg.iconState"></i>
+          </button>
+        </template>
       </div>
       <!-- Exibe "..." enquanto a resposta está sendo gerada -->
       <div v-if="loading" class="loading-indicator liv-message mensagem">...</div>
@@ -70,6 +92,8 @@
         userQuery: "",
         messages: [],
         loading: false, // Controle de carregamento
+        editingIndex: null, // Índice da mensagem sendo editada
+        editQuery: "", // Texto temporário durante a edição
       };
     },
     methods: {
@@ -103,6 +127,51 @@
 
       setUserQuery(query) {
         this.userQuery = query; // Define a consulta do usuário
+      },
+
+      startEdit(index, message) {
+        this.editingIndex = index;
+        this.editQuery = message;
+      },
+
+      async saveEdit(index) {
+        if (this.editQuery.trim() === "") return;
+
+        // Atualiza a mensagem no array
+        this.messages[index].message = this.editQuery;
+
+        // Envia uma nova requisição para gerar a resposta com a mensagem editada
+        this.loading = true;
+        try {
+          const response = await axios.post("http://127.0.0.1:5000/ask", {
+            query: this.editQuery,
+          });
+
+          // Atualiza a resposta correspondente
+          const responseIndex = this.messages.findIndex(
+            (msg, i) => i > index && msg.role === "Liv"
+          );
+          if (responseIndex !== -1) {
+            this.messages[responseIndex].message = response.data.response;
+          } else {
+            this.messages.push({
+              role: "Liv",
+              message: response.data.response,
+              iconState: "icon-copy", // Estado inicial do ícone de cópia
+            });
+          }
+        } catch (error) {
+          console.error("Erro ao atualizar a resposta:", error);
+        } finally {
+          this.loading = false;
+          this.editingIndex = null;
+          this.editQuery = "";
+        }
+      },
+
+      cancelEdit() {
+        this.editingIndex = null;
+        this.editQuery = "";
       },
 
       copyToClipboard(msg) {
@@ -151,7 +220,6 @@
   color: white;
   background-color: #21232a;
   font-family: "Quicksand", sans-serif;
- 
 }
 
 .pergunta::placeholder {
@@ -175,7 +243,7 @@
 }
 
 .btn-enviar:hover {
-  transform: scale(1.1) ;
+  transform: scale(1.1);
 }
 
 .bloco {
@@ -191,14 +259,6 @@
   font-size: 18px;
 }
 
-h2 {
-  color: rgb(255, 255, 255);
-  font-family: "Quicksand", sans-serif;
-  font-weight: 200;
-  font-size: 32px;
-  margin-bottom: 30px;
-}
-
 .chat {
   width: 40%;
   height: 40%;
@@ -206,24 +266,23 @@ h2 {
   margin-top: 3%;
 }
 
-/* Estilos para a barra de rolagem */
 .chat::-webkit-scrollbar {
-  width: 8px; /* Largura da barra de rolagem */
+  width: 8px;
 }
 
 .chat::-webkit-scrollbar-track {
-  background: #21232a; /* Cor de fundo do track */
+  background: #21232a;
   border-radius: 10px;
 }
 
 .chat::-webkit-scrollbar-thumb {
-  background-color: #444; /* Cor do "polegar" da barra de rolagem */
-  border-radius: 10px; /* Arredondamento do "polegar" */
-  border: 2px solid #21232a; /* Margem para um efeito "afundado" */
+  background-color: #444;
+  border-radius: 10px;
+  border: 2px solid #21232a;
 }
 
 .chat::-webkit-scrollbar-thumb:hover {
-  background-color: #555; /* Cor do "polegar" quando em hover */
+  background-color: #555;
 }
 
 .mensagem {
@@ -243,8 +302,8 @@ h2 {
 }
 
 .liv-message {
-  align-self: flex-end;
   background-color: rgba(50, 50, 50, 0.274);
+  align-self: flex-end;
   text-align: left;
   margin-left: 15%;
 }
@@ -260,21 +319,17 @@ h2 {
   font-family: "Quicksand", sans-serif;
   cursor: pointer;
   transition: all 0.2s ease-in-out;
-  margin-bottom: 20px;
 }
-
-
 
 .btn-sugestao:hover {
   transform: scale(1.1);
 }
 
-h5{
+h5 {
   color: rgb(255, 255, 255);
   font-family: "Quicksand", sans-serif;
   font-weight: 100;
   font-size: 16px;
-  
 }
 
 .loading-indicator {
@@ -285,12 +340,37 @@ h5{
   margin-top: 10px;
 }
 
-/* Animação de "..." */
-@keyframes dots {
-  0%, 20% { content: "."; }
-  40% { content: ".."; }
-  60% { content: "..."; }
-  80%, 100% { content: ""; }
+.edit-textarea {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 14px;
+  font-family: "Quicksand", sans-serif;
+  background-color: #21232a;
+  color: white;
+  resize: none;
+  margin-top: 10px; /* Espaço entre os botões */
+}
+
+.icon-edit {
+  width: 22px;
+  height: 22px;
+  background: url("@/assets/editar.png") no-repeat center;
+  background-size: contain;
+  cursor: pointer;
+  margin-left: 10px;
+  border: none;
+  background-color: transparent;
+  padding: 0;
+  outline: none;
+  display: inline-block;
+  vertical-align: middle; /* Alinha o ícone ao meio verticalmente */
+}
+
+.icon-edit:hover {
+  transform: scale(1.1); /* Adiciona efeito de hover */
+  transition: 0.2s ease-in-out;
 }
 
 .copy-btn {
@@ -319,6 +399,43 @@ h5{
   height: 20px;
   background: url("@/assets/copiado.png") no-repeat center;
   background-size: contain;
+}
+
+/* Estilo para o botão "Cancelar" */
+.btn-edit-cancel {
+  background-color: #121212; /* Preto mais escuro */
+  color: white; /* Texto branco */
+  border: none;
+  border-radius: 20px; /* Botão arredondado */
+  padding: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  margin-top: 10px; /* Espaço entre os botões */
+}
+
+.btn-edit-cancel:hover {
+  background-color: #1c1c1c; /* Um tom mais claro no hover */
+  transform: scale(1.1); /* Efeito de escala */
+}
+
+/* Estilo para o botão "Salvar" */
+.btn-edit-save {
+  background-color: white; /* Fundo branco */
+  color: black; /* Texto preto */
+  border: none;
+  border-radius: 20px; /* Botão arredondado */
+  padding: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  margin-right: 10px; /* Espaço entre os botões */
+  margin-top: 10px; /* Espaço entre os botões */
+}
+
+.btn-edit-save:hover {
+  background-color: #f2f2f2; /* Um tom cinza claro no hover */
+  transform: scale(1.1); /* Efeito de escala */
 }
 
 </style>
