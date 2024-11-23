@@ -37,35 +37,35 @@
     <div class="chat">
       <div
         class="mensagem"
-        v-for="(msg, index) in messages"
-        :key="index"
+        v-for="msg in messages"
+        :key="msg.id"
         :class="{
           'liv-message': msg.role === 'Liv',
           'user-message': msg.role === 'User',
         }"
       >
-        <strong>{{ msg.role }}:</strong>
-        <template v-if="editingIndex === index">
-          <!-- Campo de edição -->
+        <template v-if="editingIndex === msg.id">
           <textarea 
             v-model="editQuery" 
-            class="edit-textarea">
-          </textarea>
+            class="edit-textarea"
+          ></textarea>
           <div class="edit-buttons">
-            <button @click="saveEdit(index)" class="btn-edit-save">Salvar</button>
+            <button @click="saveEdit" class="btn-edit-save">Salvar</button>
             <button @click="cancelEdit" class="btn-edit-cancel">Cancelar</button>
           </div>
         </template>
+
         <template v-else>
           <!-- Exibe mensagem -->
-          {{ msg.message }}
+          <strong>{{ msg.role }}:</strong> {{ msg.message }}
           <!-- Botão de editar -->
           <button
             v-if="msg.role === 'User'"
             class="icon-edit"
             title="Editar mensagem"
-            @click="startEdit(index, msg.message)"
+            @click="startEdit(msg.id, msg.message)"
           ></button>
+
           <!-- Botão de copiar -->
           <button
             v-if="msg.role === 'Liv'"
@@ -77,87 +77,102 @@
           </button>
         </template>
       </div>
-      <!-- Exibe "..." enquanto a resposta está sendo gerada -->
-      <div v-if="loading" class="loading-indicator liv-message mensagem">...</div>
+
+      <!-- Exibe "..." enquanto uma resposta nova está sendo carregada -->
+      <div v-if="loading && editingIndex === null" class="loading-indicator liv-message mensagem">...</div>
     </div>
   </div>
 </template>
 
 <script>
-  import axios from "axios";
+import axios from "axios";
 
-  export default {
-    data() {
-      return {
-        userQuery: "",
-        messages: [],
-        loading: false, // Controle de carregamento
-        editingIndex: null, // Índice da mensagem sendo editada
-        editQuery: "", // Texto temporário durante a edição
-      };
+export default {
+  data() {
+    return {
+      userQuery: "",
+      messages: [],
+      loading: false, // Controle de carregamento
+      editingIndex: null, // Índice da mensagem sendo editada
+      editQuery: "", // Texto temporário durante a edição
+    };
+  },
+  methods: {
+    async sendMessage() {
+      if (this.userQuery.trim() === "") return;
+
+      // Adiciona a mensagem do usuário com um ID único
+      this.messages.push({
+        id: Date.now(), // Gera um ID único baseado no timestamp
+        role: "User",
+        message: this.userQuery,
+      });
+
+      this.loading = true; // Ativa o indicador de carregamento
+
+      try {
+        const response = await axios.post("http://127.0.0.1:5000/ask", {
+          query: this.userQuery,
+        });
+
+        // Adiciona a resposta do chatbot com um ID único
+        this.messages.push({
+          id: Date.now() + 1, // Gera outro ID único
+          role: "Liv",
+          message: response.data.response,
+          iconState: "icon-copy", // Estado inicial do ícone de cópia
+        });
+      } catch (error) {
+        console.error("Erro ao se comunicar com o servidor:", error);
+      } finally {
+        this.loading = false; // Desativa o indicador de carregamento
+      }
+
+      // Limpa o campo de input
+      this.userQuery = "";
     },
-    methods: {
-      async sendMessage() {
-        if (this.userQuery.trim() === "") return;
 
-        // Adiciona a mensagem do usuário
-        this.messages.push({ role: "User", message: this.userQuery });
-        this.loading = true; // Ativa o indicador de carregamento
+    setUserQuery(query) {
+      this.userQuery = query; // Define a consulta do usuário
+    },
 
-        try {
-          const response = await axios.post("http://127.0.0.1:5000/ask", {
-            query: this.userQuery,
-          });
+    startEdit(id, message) {
+      this.editingIndex = id; // Usa o ID para identificar a mensagem em edição
+      this.editQuery = message;
+    },
 
-          // Adiciona a resposta do chatbot com o estado inicial do ícone
-          this.messages.push({
-            role: "Liv",
-            message: response.data.response,
-            iconState: "icon-copy", // Estado inicial do ícone de cópia
-          });
-        } catch (error) {
-          console.error("Erro ao se comunicar com o servidor:", error);
-        } finally {
-          this.loading = false; // Desativa o indicador de carregamento
-        }
+    async saveEdit() {
+      if (this.editQuery.trim() === "") return;
 
-        // Limpa o campo de input
-        this.userQuery = "";
-      },
+      // Localiza a mensagem no array pelo id
+      const messageIndex = this.messages.findIndex(
+        (msg) => msg.id === this.editingIndex
+      );
 
-      setUserQuery(query) {
-        this.userQuery = query; // Define a consulta do usuário
-      },
-
-      startEdit(index, message) {
-        this.editingIndex = index;
-        this.editQuery = message;
-      },
-
-      async saveEdit(index) {
-        if (this.editQuery.trim() === "") return;
-
+      if (messageIndex !== -1) {
         // Atualiza a mensagem no array
-        this.messages[index].message = this.editQuery;
+        this.messages[messageIndex].message = this.editQuery;
 
-        // Envia uma nova requisição para gerar a resposta com a mensagem editada
+        // (opcional) Reenvia ao servidor, se necessário
         this.loading = true;
         try {
           const response = await axios.post("http://127.0.0.1:5000/ask", {
             query: this.editQuery,
           });
 
-          // Atualiza a resposta correspondente
+          // Localiza a resposta correspondente e atualiza
           const responseIndex = this.messages.findIndex(
-            (msg, i) => i > index && msg.role === "Liv"
+            (msg, i) => msg.role === "Liv" && i > messageIndex
           );
+
           if (responseIndex !== -1) {
             this.messages[responseIndex].message = response.data.response;
           } else {
             this.messages.push({
+              id: Date.now(),
               role: "Liv",
               message: response.data.response,
-              iconState: "icon-copy", // Estado inicial do ícone de cópia
+              iconState: "icon-copy",
             });
           }
         } catch (error) {
@@ -167,27 +182,28 @@
           this.editingIndex = null;
           this.editQuery = "";
         }
-      },
-
-      cancelEdit() {
-        this.editingIndex = null;
-        this.editQuery = "";
-      },
-
-      copyToClipboard(msg) {
-        msg.iconState = "icon-check"; // Altera o ícone apenas para a mensagem clicada
-        navigator.clipboard.writeText(msg.message)
-          .then(() => {
-            setTimeout(() => {
-              msg.iconState = "icon-copy"; // Reverte o ícone após 1 segundo
-            }, 2000);
-          })
-          .catch(err => {
-            console.error("Erro ao copiar texto:", err);
-          });
-      },
+      }
     },
-  };
+
+    cancelEdit() {
+      this.editingIndex = null;
+      this.editQuery = "";
+    },
+
+    copyToClipboard(msg) {
+      msg.iconState = "icon-check"; // Altera o ícone apenas para a mensagem clicada
+      navigator.clipboard.writeText(msg.message)
+        .then(() => {
+          setTimeout(() => {
+            msg.iconState = "icon-copy"; // Reverte o ícone após 1 segundo
+          }, 2000);
+        })
+        .catch(err => {
+          console.error("Erro ao copiar texto:", err);
+        });
+    },
+  },
+};
 </script>
 
 <style scoped>
@@ -229,7 +245,6 @@
 
 .btn-enviar {
   width: 100px;
-  position: relative;
   left: 0;
   height: 100px;
   border-radius: 50px;
