@@ -44,81 +44,166 @@
           'user-message': msg.role === 'User',
         }"
       >
-        <strong>{{ msg.role }}:</strong> {{ msg.message }}
-        <!-- Botão de copiar -->
-        <button
-          v-if="msg.role === 'Liv'"
-          class="copy-btn"
-          @click="copyToClipboard(msg)"
-          title="Copiar"
-        >
-          <i :class="msg.iconState"></i>
-        </button>
+        <template v-if="editingIndex === msg.id">
+          <textarea 
+            v-model="editQuery" 
+            class="edit-textarea"
+          ></textarea>
+          <div class="edit-buttons">
+            <button @click="saveEdit" class="btn-edit-save">Salvar</button>
+            <button @click="cancelEdit" class="btn-edit-cancel">Cancelar</button>
+          </div>
+        </template>
+
+        <template v-else>
+          <!-- Exibe mensagem -->
+          <strong>{{ msg.role }}:</strong> {{ msg.message }}
+          <!-- Botão de editar -->
+          <button
+            v-if="msg.role === 'User'"
+            class="icon-edit"
+            title="Editar mensagem"
+            @click="startEdit(msg.id, msg.message)"
+          ></button>
+
+          <!-- Botão de copiar -->
+          <button
+            v-if="msg.role === 'Liv'"
+            class="copy-btn"
+            @click="copyToClipboard(msg)"
+            title="Copiar"
+          >
+            <i :class="msg.iconState"></i>
+          </button>
+        </template>
       </div>
-      <!-- Exibe "..." enquanto a resposta está sendo gerada -->
-      <div v-if="loading" class="loading-indicator liv-message mensagem">...</div>
+
+      <!-- Exibe "..." enquanto uma resposta nova está sendo carregada -->
+      <div v-if="loading && editingIndex === null" class="loading-indicator liv-message mensagem">...</div>
     </div>
   </div>
 </template>
 
 <script>
-  import axios from "axios";
+import axios from "axios";
 
-  export default {
-    data() {
-      return {
-        userQuery: "",
-        messages: [],
-        loading: false, // Controle de carregamento
-      };
+export default {
+  data() {
+    return {
+      userQuery: "",
+      messages: [],
+      loading: false, // Controle de carregamento
+      editingIndex: null, // Índice da mensagem sendo editada
+      editQuery: "", // Texto temporário durante a edição
+    };
+  },
+  methods: {
+    async sendMessage() {
+      if (this.userQuery.trim() === "") return;
+
+      // Adiciona a mensagem do usuário com um ID único
+      this.messages.push({
+        id: Date.now(), // Gera um ID único baseado no timestamp
+        role: "User",
+        message: this.userQuery,
+      });
+
+      this.loading = true; // Ativa o indicador de carregamento
+
+      try {
+        const response = await axios.post("http://127.0.0.1:5000/ask", {
+          query: this.userQuery,
+        });
+
+        // Adiciona a resposta do chatbot com um ID único
+        this.messages.push({
+          id: Date.now() + 1, // Gera outro ID único
+          role: "Liv",
+          message: response.data.response,
+          iconState: "icon-copy", // Estado inicial do ícone de cópia
+        });
+      } catch (error) {
+        console.error("Erro ao se comunicar com o servidor:", error);
+      } finally {
+        this.loading = false; // Desativa o indicador de carregamento
+      }
+
+      // Limpa o campo de input
+      this.userQuery = "";
     },
-    methods: {
-      async sendMessage() {
-        if (this.userQuery.trim() === "") return;
 
-        // Adiciona a mensagem do usuário
-        this.messages.push({ role: "User", message: this.userQuery });
-        this.loading = true; // Ativa o indicador de carregamento
+    setUserQuery(query) {
+      this.userQuery = query; // Define a consulta do usuário
+    },
 
+    startEdit(id, message) {
+      this.editingIndex = id; // Usa o ID para identificar a mensagem em edição
+      this.editQuery = message;
+    },
+
+    async saveEdit() {
+      if (this.editQuery.trim() === "") return;
+
+      // Localiza a mensagem no array pelo id
+      const messageIndex = this.messages.findIndex(
+        (msg) => msg.id === this.editingIndex
+      );
+
+      if (messageIndex !== -1) {
+        // Atualiza a mensagem no array
+        this.messages[messageIndex].message = this.editQuery;
+
+        // (opcional) Reenvia ao servidor, se necessário
+        this.loading = true;
         try {
           const response = await axios.post("http://127.0.0.1:5000/ask", {
-            query: this.userQuery,
+            query: this.editQuery,
           });
 
-          // Adiciona a resposta do chatbot com o estado inicial do ícone
-          this.messages.push({
-            role: "Liv",
-            message: response.data.response,
-            iconState: "icon-copy", // Estado inicial do ícone de cópia
-          });
+          // Localiza a resposta correspondente e atualiza
+          const responseIndex = this.messages.findIndex(
+            (msg, i) => msg.role === "Liv" && i > messageIndex
+          );
+
+          if (responseIndex !== -1) {
+            this.messages[responseIndex].message = response.data.response;
+          } else {
+            this.messages.push({
+              id: Date.now(),
+              role: "Liv",
+              message: response.data.response,
+              iconState: "icon-copy",
+            });
+          }
         } catch (error) {
-          console.error("Erro ao se comunicar com o servidor:", error);
+          console.error("Erro ao atualizar a resposta:", error);
         } finally {
-          this.loading = false; // Desativa o indicador de carregamento
+          this.loading = false;
+          this.editingIndex = null;
+          this.editQuery = "";
         }
-
-        // Limpa o campo de input
-        this.userQuery = "";
-      },
-
-      setUserQuery(query) {
-        this.userQuery = query; // Define a consulta do usuário
-      },
-
-      copyToClipboard(msg) {
-        msg.iconState = "icon-check"; // Altera o ícone apenas para a mensagem clicada
-        navigator.clipboard.writeText(msg.message)
-          .then(() => {
-            setTimeout(() => {
-              msg.iconState = "icon-copy"; // Reverte o ícone após 1 segundo
-            }, 2000);
-          })
-          .catch(err => {
-            console.error("Erro ao copiar texto:", err);
-          });
-      },
+      }
     },
-  };
+
+    cancelEdit() {
+      this.editingIndex = null;
+      this.editQuery = "";
+    },
+
+    copyToClipboard(msg) {
+      msg.iconState = "icon-check"; // Altera o ícone apenas para a mensagem clicada
+      navigator.clipboard.writeText(msg.message)
+        .then(() => {
+          setTimeout(() => {
+            msg.iconState = "icon-copy"; // Reverte o ícone após 1 segundo
+          }, 2000);
+        })
+        .catch(err => {
+          console.error("Erro ao copiar texto:", err);
+        });
+    },
+  },
+};
 </script>
 
 <style scoped>
@@ -151,7 +236,6 @@
   color: white;
   background-color: #21232a;
   font-family: "Quicksand", sans-serif;
- 
 }
 
 .pergunta::placeholder {
@@ -161,7 +245,6 @@
 
 .btn-enviar {
   width: 100px;
-  position: relative;
   left: 0;
   height: 100px;
   border-radius: 50px;
@@ -175,7 +258,7 @@
 }
 
 .btn-enviar:hover {
-  transform: scale(1.1) ;
+  transform: scale(1.1);
 }
 
 .bloco {
@@ -191,14 +274,6 @@
   font-size: 18px;
 }
 
-h2 {
-  color: rgb(255, 255, 255);
-  font-family: "Quicksand", sans-serif;
-  font-weight: 200;
-  font-size: 32px;
-  margin-bottom: 30px;
-}
-
 .chat {
   width: 40%;
   height: 40%;
@@ -206,24 +281,23 @@ h2 {
   margin-top: 3%;
 }
 
-/* Estilos para a barra de rolagem */
 .chat::-webkit-scrollbar {
-  width: 8px; /* Largura da barra de rolagem */
+  width: 8px;
 }
 
 .chat::-webkit-scrollbar-track {
-  background: #21232a; /* Cor de fundo do track */
+  background: #21232a;
   border-radius: 10px;
 }
 
 .chat::-webkit-scrollbar-thumb {
-  background-color: #444; /* Cor do "polegar" da barra de rolagem */
-  border-radius: 10px; /* Arredondamento do "polegar" */
-  border: 2px solid #21232a; /* Margem para um efeito "afundado" */
+  background-color: #444;
+  border-radius: 10px;
+  border: 2px solid #21232a;
 }
 
 .chat::-webkit-scrollbar-thumb:hover {
-  background-color: #555; /* Cor do "polegar" quando em hover */
+  background-color: #555;
 }
 
 .mensagem {
@@ -243,8 +317,8 @@ h2 {
 }
 
 .liv-message {
-  align-self: flex-end;
   background-color: rgba(50, 50, 50, 0.274);
+  align-self: flex-end;
   text-align: left;
   margin-left: 15%;
 }
@@ -260,21 +334,17 @@ h2 {
   font-family: "Quicksand", sans-serif;
   cursor: pointer;
   transition: all 0.2s ease-in-out;
-  margin-bottom: 20px;
 }
-
-
 
 .btn-sugestao:hover {
   transform: scale(1.1);
 }
 
-h5{
+h5 {
   color: rgb(255, 255, 255);
   font-family: "Quicksand", sans-serif;
   font-weight: 100;
   font-size: 16px;
-  
 }
 
 .loading-indicator {
@@ -285,12 +355,37 @@ h5{
   margin-top: 10px;
 }
 
-/* Animação de "..." */
-@keyframes dots {
-  0%, 20% { content: "."; }
-  40% { content: ".."; }
-  60% { content: "..."; }
-  80%, 100% { content: ""; }
+.edit-textarea {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 14px;
+  font-family: "Quicksand", sans-serif;
+  background-color: #21232a;
+  color: white;
+  resize: none;
+  margin-top: 10px; /* Espaço entre os botões */
+}
+
+.icon-edit {
+  width: 22px;
+  height: 22px;
+  background: url("@/assets/editar.png") no-repeat center;
+  background-size: contain;
+  cursor: pointer;
+  margin-left: 10px;
+  border: none;
+  background-color: transparent;
+  padding: 0;
+  outline: none;
+  display: inline-block;
+  vertical-align: middle; /* Alinha o ícone ao meio verticalmente */
+}
+
+.icon-edit:hover {
+  transform: scale(1.1); /* Adiciona efeito de hover */
+  transition: 0.2s ease-in-out;
 }
 
 .copy-btn {
@@ -319,6 +414,43 @@ h5{
   height: 20px;
   background: url("@/assets/copiado.png") no-repeat center;
   background-size: contain;
+}
+
+/* Estilo para o botão "Cancelar" */
+.btn-edit-cancel {
+  background-color: #121212; /* Preto mais escuro */
+  color: white; /* Texto branco */
+  border: none;
+  border-radius: 20px; /* Botão arredondado */
+  padding: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  margin-top: 10px; /* Espaço entre os botões */
+}
+
+.btn-edit-cancel:hover {
+  background-color: #1c1c1c; /* Um tom mais claro no hover */
+  transform: scale(1.1); /* Efeito de escala */
+}
+
+/* Estilo para o botão "Salvar" */
+.btn-edit-save {
+  background-color: white; /* Fundo branco */
+  color: black; /* Texto preto */
+  border: none;
+  border-radius: 20px; /* Botão arredondado */
+  padding: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  margin-right: 10px; /* Espaço entre os botões */
+  margin-top: 10px; /* Espaço entre os botões */
+}
+
+.btn-edit-save:hover {
+  background-color: #f2f2f2; /* Um tom cinza claro no hover */
+  transform: scale(1.1); /* Efeito de escala */
 }
 
 </style>
